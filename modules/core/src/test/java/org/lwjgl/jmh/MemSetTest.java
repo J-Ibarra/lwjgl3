@@ -28,7 +28,7 @@ public class MemSetTest {
 
 	@Benchmark
 	public void loop() {
-		memSetLoop(m, 0, length);
+		memSetLoop(m, (byte)0, length);
 	}
 
 	@Benchmark
@@ -41,21 +41,40 @@ public class MemSetTest {
 		Arrays.fill(a, 0, length, (byte)0);
 	}
 
-	private static void memSetLoop(long m, int value, int length) {
-		int bytes = value & 0xFF;
-		int longs = length >> 3;
-
-		// Align with byte operations
+	private static void memSetLoop(long dst, byte value, int bytes) {
 		int i = 0;
-		for ( int len = length - (longs << 3); i < len; i++ )
-			memPutByte(m + i, (byte)bytes);
 
-		// Set the rest with long operations
-		bytes |= bytes << 8;
-		bytes |= bytes << 16;
-		long l = bytes | (bytes << 32);
-		for ( ; i < length; i += 8 )
-			memPutLong(m + i, l);
+		if ( 8 <= bytes ) {
+			int misalignment = (int)dst & 7;
+			if ( misalignment != 0 ) {
+				// Align to 8 bytes
+				for ( int len = 8 - misalignment; i < len; i++ )
+					memPutByte(dst + i, value);
+			}
+
+			// Aligned longs for performance
+			long fill = fill(value);
+			do {
+				memPutLong(dst + i, fill);
+				i += 8;
+			} while ( i <= bytes - 8 );
+		}
+
+		// Tail
+		for ( ; i < bytes; i++ )
+			memPutByte(dst + i, value);
+	}
+
+	private static long fill(byte value) {
+		long fill = value;
+
+		if ( value != 0 ) {
+			fill += fill << 8;
+			fill += fill << 16;
+			fill += fill << 32;
+		}
+
+		return fill;
 	}
 
 }
